@@ -1,3 +1,18 @@
+Metadata-Version: 2.1
+Name: eXAlu
+Version: 0.2
+Summary: Deep learning based Alu exonization event detecter
+Home-page: https://github.com/
+Author: Zitong He & Liliana Florea
+Author-email: hezt@jhu.edu
+Project-URL: Bug Tracker, https://github.com/
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: GPLv3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
 # eXAlu
 The eXAlu is a Deep Learning model to predict *Alu* Exonization events in the human genome based on sequence alone.
 
