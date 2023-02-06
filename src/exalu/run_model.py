@@ -10,22 +10,30 @@ from .data_preprocess.curate_data import curate_data
 
 def run_ead(strand, model_name='cnet',
             context_mode='none', single_side_pad_len=0,
-            run_mode=0, work_dir=None, infer_set=None,
+            run_mode=0, work_dir=None, data_dir=None, infer_set=None,
             infer_file=None, prd_file='prd_y.txt',
             model_wts_name=None,
             dataset_comment=None,
             model_dst_dir=None,
             dataset_save_file=None,
-            test_chrs=['chr2', 'chr5']):
+            test_chrs=['chr2', 'chr5'],
+            infer_bed_file=None,
+            gencode_neg_dataset_file=None):
+    # infer_file is a fasta file
+    # while infer_bed_file is a bed file
+    # only run mode 6 requires infer_bed_file
     since = time.time()
     print('test_chrs', test_chrs)
     # save path config
-    if run_mode in [0, 1, 2, 4]:
+    if run_mode in [0, 1, 2, 4, 5, 6]:
         # run_mode 0, 2 will use their own dataset/model
         # run_mode 1 will only use 0's model, however, it will use its own dataset
         # run_mode 3 will use 2's dataset/model
+        print(infer_set)
         version_name = f'ead_v1.4t_{infer_set}'
+        print(work_dir)
         save_name_prefix = f'{version_name}_runmode_{run_mode}_padding_{context_mode}_{single_side_pad_len}'
+        print(save_name_prefix)
         dataset_dst_dir = os.path.join(work_dir, f'dataset_pickles')
         if dataset_comment:
             # dataset comment is used for different dataset file, such as the snp part of code.
@@ -49,7 +57,7 @@ def run_ead(strand, model_name='cnet',
                 datasets = pickle.load(fh)
         else:
             print('dataset pickle file DOES NOT exist')
-            curate_data(infer_set=infer_set, strand=strand, mode=context_mode, single_side_pad_len=single_side_pad_len, work_dir=work_dir)
+            curate_data(infer_set=infer_set, strand=strand, mode=context_mode, single_side_pad_len=single_side_pad_len, work_dir=work_dir, data_dir=data_dir)
             # datasets = load_data_ead_alu_chr_woinfer(alu_file=pos_alu_fa_file, neg_file=neg_alu_fa)
             datasets = load_data_ead_alu_chr_train_unique_duplicate(alu_file=pos_alu_fa_file, neg_file=neg_alu_fa, duplicate_times=10, test_chrs=test_chrs)
             os.makedirs(dataset_dst_dir, exist_ok='True')
@@ -98,7 +106,7 @@ def run_ead(strand, model_name='cnet',
                 datasets = pickle.load(fh)
         else:
             print('dataset pickle file DOES NOT exist')
-            curate_data(infer_set=infer_set, strand=strand, mode=context_mode, single_side_pad_len=single_side_pad_len, work_dir=work_dir)
+            curate_data(infer_set=infer_set, strand=strand, mode=context_mode, single_side_pad_len=single_side_pad_len, work_dir=work_dir, data_dir=data_dir)
             os.makedirs(dataset_dst_dir, exist_ok='True')
             datasets = load_data_ead_alu_chr_withinfer2(
                                             strand=strand,
@@ -137,22 +145,53 @@ def run_ead(strand, model_name='cnet',
             for i in range(len(id_line)):
                 write_fh.write(f'{prd_y[i]}\t{y[i]}\t{id_line[i]}' + '\n')
 
-    if run_mode == 4:
+    if run_mode in [4, 5, 6]:
+        # mode 4
         # just the simplist infer
+        # mode 5
+        # just the simplist infer, but will remove the duplicates
+        # mode 6
+        # particularly for gencode analysis, due to three-label issue
         # load datasets
-        # if os.path.isfile(dataset_save_file):
-        #     print('dataset pickle file exists')
-        #     with open(dataset_save_file, 'rb') as fh:
-        #         datasets = pickle.load(fh)
-        # else:
-        #     print('dataset pickle file DOES NOT exist')
-        datasets = load_data_ead_simpleinfer(infer_file)
-        # os.makedirs(dataset_dst_dir, exist_ok='True')
-        # with open(dataset_save_file, 'wb') as fh:
-            # pickle.dump(datasets, fh)
+        if os.path.isfile(dataset_save_file):
+            print('dataset pickle file exists')
+            with open(dataset_save_file, 'rb') as fh:
+                datasets = pickle.load(fh)
+        else:
+            print('dataset pickle file DOES NOT exist')
+            if run_mode == 4:
+                datasets = load_data_ead_simpleinfer(infer_file)
+            elif run_mode == 5:
+                datasets = load_data_ead_simpleinfer_rmdup(infer_file)
+            else:
+                datasets = load_data_ead_infer_gencode(strand=strand,
+                                                       infer_fa_file=infer_file, 
+                                                       infer_bed_file=infer_bed_file,
+                                                       infer_unique=True)
+                # load training datasets for neg data
+                with open(gencode_neg_dataset_file, 'rb') as fh:
+                    # this neg datasets is the training set
+                    # we only use the neg data in this analysis
+                    training_datasets = pickle.load(fh)
+                    neg_dataset = training_datasets['train'][int(len(training_datasets['train'])/2):]
+                    import random
+                    random.shuffle(neg_dataset)
+                    infer_set_len = len(datasets['infer'])
+                    for i, d in enumerate(neg_dataset):
+                        if i >= infer_set_len:
+                            break
+                        datasets['infer'].append(d)
+                    print('read neg data from training set.. done...')
+            os.makedirs(dataset_dst_dir, exist_ok='True')
+            # protect dataset; disable dump 
+            with open(dataset_save_file, 'wb') as fh:
+                pickle.dump(datasets, fh)
         alu_prd = AluPrdEAD(datasets, model_name=model_name, run_mode=run_mode)
         print(model_wts_name)
-        model_wts = torch.load(model_wts_name)
+        if torch.cuda.is_available():
+            model_wts = torch.load(model_wts_name)
+        else:
+            model_wts = torch.load(model_wts_name, map_location=torch.device('cpu'))
         alu_prd.model.load_state_dict(model_wts)
         prd_y, y, id_line= alu_prd.evaluate('infer')
         prd_y = prd_y.tolist()
@@ -162,7 +201,7 @@ def run_ead(strand, model_name='cnet',
             for i in range(len(id_line)):
                 write_fh.write(f'{prd_y[i]}\t{y[i]}\t{id_line[i]}' + '\n')
     
-    if run_mode == 5:
+    if run_mode == 7:
         # backward calculate gradients
         # load datasets
         if os.path.isfile(dataset_save_file):

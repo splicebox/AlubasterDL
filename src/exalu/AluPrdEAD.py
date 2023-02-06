@@ -32,10 +32,11 @@ class AluPrdEAD(object):
         elif model_name == 'fcn':
             self.model = FCN_v1(self.batch_size)
         self.model = self.model.to(self.device)
+        # self.warmup_epoch_th = 15
         self.warmup_epoch_th = 15
-        # self.optimizer_warmup = torch.optim.Adam(self.model.parameters()) # lr 3e-4
         self.optimizer_warmup = torch.optim.NAdam(self.model.parameters(), lr=lr)
-        self.optimizer_sgd = torch.optim.SGD(self.model.parameters(), lr=lr)
+        self.optimizer_main = torch.optim.SGD(self.model.parameters(), lr=lr)
+        # self.optimizer_warmup = torch.optim.Adam(self.model.parameters()) # lr 3e-4
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, betas=[0.8, 0.999], eps=0.1)
         # self.optimizer = torch.optim.AdamW(self.model.parameters())
         # self.optimizer = torch.optim.Adadelta(self.model.parameters())
@@ -59,20 +60,21 @@ class AluPrdEAD(object):
             # classification
             self.criterion = nn.BCEWithLogitsLoss(reduction='sum')
             # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.95)
-            self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer_sgd, milestones=[60, 80, 100, 120], gamma=0.2)
+            self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer_main, milestones=[60, 80, 100, 120], gamma=0.2)
+            # self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer_main, milestones=[30, 40, 50, 60], gamma=0.2)
             # self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[200], gamma=0.5)
             self.records = []
             self.losses = []
-        elif run_mode == 1 or run_mode == 3 or run_mode == 4:
+        elif run_mode in [1, 3, 4, 5, 6]:
             # mode 1: infer (with label) pair with mode 0
             # mode 3: infer (with label) pair with mode 2, the infer set is from mode 2
             # mode 4: simple infer (without label)
+            # mode 6: simple infer particularly for gencode
             infer_dataset = AluDatasetEAD(datasets['infer'])
             self.dataloaders = {'infer': DataLoader(infer_dataset, batch_size=self.batch_size, shuffle=False)}
             self.dataset_sizes = {'infer': len(infer_dataset)}
-            # train and infer every epoch
-        elif run_mode == 5:
-            # model 3: backward gradients
+        elif run_mode == 7:
+            # model 7: backward gradients
             test_dataset =  AluDatasetEAD(datasets['test'])
             self.dataloaders = {'test': DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)}
             self.dataset_sizes = {'test': len(test_dataset)}
@@ -143,9 +145,12 @@ class AluPrdEAD(object):
             x = x.to(self.device)
             with torch.set_grad_enabled(False):
                 self.optimizer_warmup.zero_grad()
-                self.optimizer_sgd.zero_grad()
+                self.optimizer_main.zero_grad()
                 prd_y = self.model(x)
-                prd_y = torch.squeeze(prd_y)
+                if prd_y.shape[0] > 1:
+                    prd_y = torch.squeeze(prd_y)
+                else:
+                    prd_y = prd_y[:,0] 
                 prd_y_test = torch.cat((prd_y_test, nn.Sigmoid()(prd_y)), dim=0)
         return prd_y_test.cpu(), y_test, id_line_lst
 
@@ -160,7 +165,7 @@ class AluPrdEAD(object):
             if epoch <= self.warmup_epoch_th:
                 self.optimizer = self.optimizer_warmup
             else:
-                self.optimizer = self.optimizer_sgd
+                self.optimizer = self.optimizer_main
             print('Epoch {}/{}\tlr: {}'.format(epoch, self.num_epochs, self.optimizer.param_groups[0]['lr']))
             print('-' * 15)
             records_dict = {}
@@ -192,7 +197,8 @@ class AluPrdEAD(object):
                         prd_y = torch.squeeze(prd_y)
                         loss = self.criterion(prd_y, y)
                         display_loss_bce[phase] += loss
-                        l1_lambda = 1e-3
+                        # l1_lambda = 1e-3
+                        l1_lambda = 0
                         l2_lambda = 1e-2
                         l1_norm = sum(p.abs().sum() for p in self.model.parameters())
                         l2_norm = sum(p.pow(2.0).sum() for p in self.model.parameters())

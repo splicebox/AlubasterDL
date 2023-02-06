@@ -2,11 +2,11 @@ import os
 import pybedtools
 from .read_tissue_alu import add_context, read_tissue_alu_context
 
-data_dir = os.getcwd() + '/data'
-fixed_dir = data_dir + '/Fixed_add13/' # stable model use this one
+# data_dir = os.getcwd() + '/data'
+# fixed_dir = data_dir + '/Fixed_add13/' # stable model use this one
 # fixed_dir = data_dir + '/Fixed_genesplicer/' # just used for generating the gene splicer analysis
 
-human_alu_bed_file = data_dir + '/Annotation/Alu_repeats_hg38_filtered.bed'
+# human_alu_bed_file = data_dir + '/Annotation/Alu_repeats_hg38_filtered.bed'
 
 def curate_each_tissue(genome, strand, work_dir, tissue):
     '''
@@ -52,7 +52,7 @@ def curate_each_tissue(genome, strand, work_dir, tissue):
     exon_bed.sequence(fi=ref_fa, fo=dst_pos_exon_fa, name=True, s=strand)
 
 
-def curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst, infer_set_lst=['Gencode', 'MOAT']):
+def curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst, human_alu_bed_file, infer_set_lst=['Gencode', 'MOAT']):
     '''
     This function curates whole dataset from every tissues
     Gencode is used for inference, so it should not be included in trainset
@@ -64,8 +64,6 @@ def curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst
     data/curated_data/padding____/whole_pos_alu.bed has __infer sets__
 
     '''
-    human_alu_bed_file = data_dir + '/Annotation/Alu_repeats_hg38_filtered.bed'
-    
     whole_dir_str = f'{work_dir}/whole'
     dst_whole_pos_alu_bed  = whole_dir_str + '_pos_alu.bed'
     dst_whole_pos_exon_bed = whole_dir_str + '_pos_exon.bed'
@@ -137,7 +135,10 @@ def curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst
     human_alu_bed_file_context = os.path.join(work_dir, os.path.basename(human_alu_bed_file))
     add_context(human_alu_bed_file, human_alu_bed_file_context, mode=mode, single_side_pad_len=single_side_pad_len)
     human_alu_bed = pybedtools.BedTool(human_alu_bed_file_context)
+    print('Neg Alu candidates for training:', human_alu_bed_file)
     neg_alu_bed = human_alu_bed.subtract(alu_bed, A=True)
+    print('Length before substract pos alus: ', human_alu_bed.count())
+    print('Length before substract pos alus: ', neg_alu_bed.count())
     # get neg sequence
     dst_neg_bed = os.path.join(work_dir, 'neg_alu.bed')
     dst_neg_fa  = os.path.join(work_dir, 'neg_alu.fa')
@@ -187,7 +188,7 @@ def curate_whole_otherspecies(genome, strand, work_dir, mode, single_side_pad_le
     neg_alu_bed.saveas(dst_neg_bed) # bed file, not needed
     neg_alu_bed.sequence(fi=ref_fa, fo=dst_neg_fa, name=True, s=strand)
 
-def curate_simpleinfer(strand, mode, single_side_pad_len, infer_bed_file=None, work_dir=None):
+def curate_simpleinfer(strand, mode, single_side_pad_len, infer_bed_file=None, work_dir=None, data_dir=None):
     genome = data_dir + '/shared/hg38/hg38c.fa' 
     # read_tissue_alu_context(genome=genome, mode=mode, single_side_pad_len=single_side_pad_len, tissue='simpleinfer')
     ref_fa = pybedtools.example_filename(genome)
@@ -202,7 +203,7 @@ def curate_simpleinfer(strand, mode, single_side_pad_len, infer_bed_file=None, w
     alu_bed = pybedtools.BedTool(dst_bed)
     alu_bed.sequence(fi=ref_fa, fo=dst_fa, name=True, s=strand)
 
-def curate_data(infer_set, strand, mode='none', single_side_pad_len=0, work_dir=None):
+def curate_data(infer_set, strand, mode='none', single_side_pad_len=0, work_dir=None, data_dir=None):
     '''
     mode: left - only left context; right - only right context; both - left and right context
         none - no context
@@ -210,14 +211,13 @@ def curate_data(infer_set, strand, mode='none', single_side_pad_len=0, work_dir=
     print(work_dir)
     tissue_lst = []
     # dataset (tissue or source) selection
-    for d in os.listdir(fixed_dir):
+    # fixed_dir = data_dir + '/Fixed_add13/' # stable model use this one
+    training_bed_dir = data_dir +  '/Fixed_add13/'
+    for d in os.listdir(training_bed_dir):
         if d.startswith('padding_') or d in ['f0', 'f350', 'simpleinfer']:
             continue
-        # TODO: exclude the others
         if infer_set == 'MOAT':
-            # if d in ['OtherSpecies']:
             if d in ['OtherSpecies', 'hnRNPC', 'NMD', 'Gencode', 'Upf1SRA', 'BodyMap']:
-            # if d in ['OtherSpecies', 'hnRNPC', 'NMD']:
                 print('skipping ..............', d)
                 continue
         if infer_set == 'Gencode':
@@ -232,18 +232,13 @@ def curate_data(infer_set, strand, mode='none', single_side_pad_len=0, work_dir=
         tissue_lst.append(d)
     print(tissue_lst)
     for tissue in tissue_lst:
-        if tissue == 'OtherSpecies':
-            # TODO HL
-            genome = '/home/zitong/Projects/eXAlu/data/OtherSpecies/rheMac10.fa'
-        else:
-            genome = data_dir + '/shared/hg38/hg38c.fa'
-        read_tissue_alu_context(genome, strand, mode, single_side_pad_len, tissue, fixed_dir, work_dir)
+        genome = data_dir + '/shared/hg38/hg38c.fa'
+        read_tissue_alu_context(genome, strand, mode, single_side_pad_len, tissue, training_bed_dir, work_dir)
         curate_each_tissue(genome, strand, work_dir, tissue)
     genome = data_dir + '/shared/hg38/hg38c.fa' 
-    curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst, infer_set_lst=[infer_set])
-    if infer_set == 'OtherSpecies':
-        # TODO HL
-        genome = '/home/zitong/Projects/eXAlu/data/OtherSpecies/rheMac10.fa'
-        curate_whole_otherspecies(genome, strand, work_dir, mode, single_side_pad_len)
 
-
+    # old version 04/09/22 Alu_repeats_hg38_filtered.bed may still have false negative data
+    human_alu_bed_file = data_dir + '/Annotation/Alu_repeats_hg38_filtered.bed'
+    # new version 10/21/22 intergenic alus: Alu_repeats_hg38_filtered.bed - gencode_exons - gencode_introns
+    # human_alu_bed_file = data_dir + '/Annotation/intergenic_alu/all_alu_minus_exon_minus_intron.bed'
+    curate_whole(genome, strand, work_dir, mode, single_side_pad_len, tissue_lst, human_alu_bed_file=human_alu_bed_file,infer_set_lst=[infer_set])

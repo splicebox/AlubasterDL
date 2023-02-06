@@ -13,19 +13,36 @@ SEQ_LEN_TH_LOW = 100
 
 def split(src_bed_file, exon_bed_file, alu_bed_file):
     '''
-    deprecated; see mode='none' in split_context
+    BE AWARE: the src_bed_file's bed format has bugs, it now looks,
+    chr22	50622719	50624718	SRR1317771	+	0	chr22	50623919	50624078	h38_mk_AluJ	0	-	159
     '''
-    with open(src_bed_file, 'r') as src_bed_fh,\
-         open(exon_bed_file, 'w') as exon_bed_fh,\
-         open(alu_bed_file, 'w') as alu_bed_fh:
-        src_bed_reader = csv.reader(src_bed_fh, delimiter='\t')
-        exon_bed_writer = csv.writer(exon_bed_fh, delimiter='\t')
-        alu_bed_writer = csv.writer(alu_bed_fh, delimiter='\t')
-        for idx, row in enumerate(src_bed_reader):
-            if int(row[8]) - int(row[7]) > SEQ_LEN_TH_UP:
-                continue
-            exon_bed_writer.writerow([row[0], row[1], row[2], row[3] + '_' + str(idx+1), '0', row[4]])
-            alu_bed_writer.writerow( [row[6], row[7], row[8], row[9] + '_' + str(idx+1), '0', row[11]])
+    src_bed_fh = open(src_bed_file, 'r')
+    exon_bed_fh = open(exon_bed_file, 'w')
+    alu_bed_fh = open(alu_bed_file, 'w')
+    src_bed_reader = csv.reader(src_bed_fh, delimiter='\t')
+    exon_bed_writer = csv.writer(exon_bed_fh, delimiter='\t')
+    alu_bed_writer = csv.writer(alu_bed_fh, delimiter='\t')
+    for idx, row in enumerate(src_bed_reader):
+        i, j = 7, 11
+        l = int(row[i])
+        r = int(row[i + 1])
+        seq_len = r - l
+        if seq_len > SEQ_LEN_TH_UP:
+            continue # should skip both exon and alu
+        if seq_len < SEQ_LEN_TH_LOW:
+            continue
+        alu_bed_writer.writerow([row[i - 1], str(l), str(r), \
+            f'{row[i + 2]}_{idx + 1}_{seq_len}', row[5], row[j]]) # row[5] is exon event label
+        i, j = 1, 4
+        l = int(row[i])
+        r = int(row[i + 1])
+        seq_len = r - l
+        exon_bed_writer.writerow([row[i - 1], str(l), str(r), \
+            f'{row[i + 2]}_{idx + 1}_{seq_len}', row[5], row[j]]) # row[5] is exon event label
+    src_bed_fh.close()
+    exon_bed_fh.close()
+    alu_bed_fh.close()
+    return
     
 def read_tissue_alu(tissue, genome, strand, fixed_dir):
     '''
@@ -152,6 +169,7 @@ def split_context(src_bed_file, exon_bed_file, alu_bed_file, mode='none', single
             seq_len = r - l
             l_pad, r_pad = 0, 0
             if i == 7:
+                # only alu will do len check
                 if seq_len > SEQ_LEN_TH_UP:
                     too_long_counter += 1
                     continue

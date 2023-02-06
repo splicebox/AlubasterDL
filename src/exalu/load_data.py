@@ -12,6 +12,7 @@ data_dir = os.getcwd() + '/data'
 # ENCODE_FN = seq_encoding_onehot
 ENCODE_FN = seq_encoding_onehot_padN
 
+
 def get_dataset_from_seq_ead_multi(dataset, flag):
     p = Pool(16)
     print(dataset[0])
@@ -21,12 +22,25 @@ def get_dataset_from_seq_ead_multi(dataset, flag):
     return [[r, torch.tensor(flag)] for r in result_dataset]
     # return [[r, flag] for r in result_dataset]
 
+
 def get_dataset_from_seq_ead(dataset, flag):
     flag = torch.tensor(flag)
     result_dataset = []
     for d in dataset:
+        # d: (_id, seq_line, id_line[1:])
+        # or (seq_line, id_line[1:])
         result_dataset.append([d[-1], ENCODE_FN(d[-2]), flag])
     return result_dataset
+
+
+def get_dataset_from_seq_ead_var_flag(dataset, flag_dict):
+    result_dataset = []
+    for d in dataset:
+        flag = torch.tensor(flag_dict[d[0]])
+        # ((_id, seq_line, id_line[1:])
+        result_dataset.append([d[2], ENCODE_FN(d[1]), flag])
+    return result_dataset
+
 
 def get_dataset_from_seq_dp(data, l, r):
     # flag = np.array(pos_neg)
@@ -35,11 +49,12 @@ def get_dataset_from_seq_dp(data, l, r):
     for i in data:
         seq_ary = ENCODE_FN(i.upper())
         label_ary = np.zeros(len(i) - 100, dtype=np.int64)
-        label_ary[l - 50] = 1 # starter
-        label_ary[r - 50] = 2 # ender
+        label_ary[l - 50] = 1  # starter
+        label_ary[r - 50] = 2  # ender
         result_dataset.append([seq_ary, label_ary])
     print('get_dataset_from_seq time usage: {}'.format(time.time() - st))
     return result_dataset
+
 
 def load_data_dp(alu_file, exon_file, neg_file, pos_ratio=0.5):
     datasets = {}
@@ -48,7 +63,7 @@ def load_data_dp(alu_file, exon_file, neg_file, pos_ratio=0.5):
     # with open(alu_file, 'r') as alu_fh:
     with open(exon_file, 'r') as exon_fh:
         exon_line = exon_fh.readline()
-        while(exon_line):
+        while (exon_line):
             loc_lst = exon_line.split('::')[0].split('_')[-2:]
             l = int(loc_lst[0])
             r = int(loc_lst[1])
@@ -62,6 +77,7 @@ def load_data_dp(alu_file, exon_file, neg_file, pos_ratio=0.5):
     datasets['test'] = []
     return datasets
 
+
 def load_data_ead_alu(alu_file, neg_file, pos_ratio=0.5):
     # load all alu only
     # TODO: maybe deprecate
@@ -70,7 +86,7 @@ def load_data_ead_alu(alu_file, neg_file, pos_ratio=0.5):
     neg_data = []
     with open(alu_file, 'r') as alu_fh:
         alu_line = alu_fh.readline()
-        while(alu_line):
+        while (alu_line):
             alu_line = alu_fh.readline().rstrip()
             if alu_line == '':
                 break
@@ -78,20 +94,22 @@ def load_data_ead_alu(alu_file, neg_file, pos_ratio=0.5):
             alu_fh.readline()
     with open(neg_file, 'r') as neg_fh:
         neg_line = neg_fh.readline()
-        while(neg_line):
+        while (neg_line):
             neg_line = neg_fh.readline().rstrip()
             if neg_line == '':
                 break
             neg_fh.readline()
             neg_data.append(neg_line)
 
-    selected_neg_data = random.sample(neg_data, len(pos_data) * int((1 - pos_ratio) / pos_ratio))
+    selected_neg_data = random.sample(neg_data, len(
+        pos_data) * int((1 - pos_ratio) / pos_ratio))
     pos_dataset = get_dataset_from_seq_ead(pos_data, 1)
-    neg_dataset = get_dataset_from_seq_ead(selected_neg_data, 0) 
-    
+    neg_dataset = get_dataset_from_seq_ead(selected_neg_data, 0)
+
     datasets['train'] = pos_dataset + neg_dataset
     datasets['test'] = []
     return datasets
+
 
 def load_data_ead_simpleinfer(fa_file):
     datasets = defaultdict(list)
@@ -100,7 +118,7 @@ def load_data_ead_simpleinfer(fa_file):
     # infer_dict = defaultdict(list)
     infer_lst = []
     with open(fa_file, 'r') as src_fa_fh:
-        while(id_line := src_fa_fh.readline().rstrip()):
+        while (id_line := src_fa_fh.readline().rstrip()):
             # id_line: >h38_mk_AluJb_5_bothfix_0_0_NA::chr1:192937823-192938210(+)::BASELINE
             # _id is useless here
             # _id = id_line.split('::')[1]
@@ -115,9 +133,101 @@ def load_data_ead_simpleinfer(fa_file):
     print('load_data_ead_simpleinfer time usage: {}'.format(time.time() - st))
     return datasets
 
+
+def load_data_ead_simpleinfer_rmdup(fa_file):
+    datasets = defaultdict(list)
+    st = time.time()
+    print('loading... simpleinfer data')
+    infer_dict = defaultdict(list)
+    _id_set = set()
+    with open(fa_file, 'r') as src_fa_fh:
+        while (id_line := src_fa_fh.readline().rstrip()):
+            # id_line: >h38_mk_AluJb_5_bothfix_0_0_NA::chr1:192937823-192938210(+)::BASELINE
+            # _id is useless here
+            _id = id_line.split('::')[1]
+            if _id in _id_set:
+                src_fa_fh.readline()
+                continue
+            _id_set.add(_id)
+            chr = _id.split(':')[0]
+            assert (chr[0:3] == 'chr')
+            seq_line = src_fa_fh.readline().rstrip()
+            infer_dict[chr].append((_id, seq_line, id_line[1:]))
+    get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead
+    for chr in infer_dict.keys():
+        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_dict[chr], 3.)
+    print('load_data_ead_simpleinfer time usage: {}'.format(time.time() - st))
+    return datasets
+
+
+def load_data_ead_infer_gencode(strand, infer_bed_file, infer_fa_file, infer_unique=True):
+    # read infer only, the difference between load_data_ead_simpleinfer and this function is
+    # this function will store gencode's types
+    st = time.time()
+    # read infer
+    infer_bed_fh = open(infer_bed_file, 'r')
+    src_bed_reader = csv.reader(infer_bed_fh, delimiter='\t')
+    infer_id_label_dict = defaultdict(float)
+    for idx, row in enumerate(src_bed_reader):
+        print(row)
+        l = int(row[1])
+        r = int(row[2])
+        if strand == True:
+            _id = f'{row[0]}:{l}-{r}({row[5]})'
+        else:
+            _id = f'{row[0]}:{l}-{r}'
+        assert (row[4] in ['1', '2', '3'])
+        if infer_id_label_dict[_id] == 0.0:
+            if row[4] in ['1', '2']:
+                # Class 1: code 1, 2, terminal exons only
+                infer_id_label_dict[_id] = 1.0
+            else:
+                # Class 2: code 3, internal exons only
+                infer_id_label_dict[_id] = 2.0
+        # Class 3: can be both Class 1 and Class 2
+        elif infer_id_label_dict[_id] == 1.0:
+            if row[4] == '3':
+                infer_id_label_dict[_id] = 3.0
+        elif infer_id_label_dict[_id] == 2.0:
+            if row[4] in ['1', '2']:
+                infer_id_label_dict[_id] = 3.0
+    infer_bed_fh.close()
+
+    # read infer alu file
+    # label_file = work_dir + '/labels.txt'
+    print('loading... infer positive data ')
+    # infer_label_fh = open(label_file, 'w')
+    infer_pos_dict = defaultdict(list)
+    # TODO: add test_pos_id_set too
+    infer_pos_id_set = set()
+    with open(infer_fa_file, 'r') as src_fa_fh:
+        while (id_line := src_fa_fh.readline().rstrip()):
+            _id = id_line.split('::')[-1]
+            if _id in infer_pos_id_set and infer_unique:
+                # remove duplicate Gencode
+                src_fa_fh.readline()
+                continue
+            infer_pos_id_set.add(_id)
+            chr = id_line.split(':')[2]
+            assert (chr[0:3] == 'chr')
+            seq_line = src_fa_fh.readline().rstrip()
+            infer_pos_dict[chr].append((_id, seq_line, id_line[1:]))
+            # infer_label_fh.write(_id + '\t' + str(infer_id_label_dict[_id]) + '\n')
+
+    # write several for-loop due to keys may have small difference
+    get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead_var_flag
+    print('converting... to labeled data')
+    datasets = defaultdict(list)
+    for chr in infer_pos_dict.keys():
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_pos_dict[chr], infer_id_label_dict)
+    print('load_data_ead_alu_chr time usage: {}'.format(time.time() - st))
+    return datasets
+
+
 def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer_set,
-                          neg_ratio=1.0, val_ratio=0.1, test_chrs=['chr2', 'chr5'],
-                          train_unique=True, test_unique=True, infer_unique=True, duplicate_times=5):
+                                     neg_ratio=1.0, val_ratio=0.1, test_chrs=['chr2', 'chr5'],
+                                     train_unique=True, test_unique=True, infer_unique=True, duplicate_times=5):
     # read infer set first
     # if train file's seqs appear in the infer set, then skip
     st = time.time()
@@ -127,7 +237,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     class_2_counter = 0  # 3 in->2
     infer_bed_fh = open(work_dir + f'/{infer_set}' + '_pos_alu.bed', 'r')
     src_bed_reader = csv.reader(infer_bed_fh, delimiter='\t')
-    infer_id_label_dict= {}
+    infer_id_label_dict = {}
     for idx, row in enumerate(src_bed_reader):
         l = int(row[1])
         r = int(row[2])
@@ -159,7 +269,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     # TODO: add test_pos_id_set too
     infer_pos_id_set = set()
     with open(work_dir + f'/{infer_set}' + '_pos_alu.fa', 'r') as src_fa_fh:
-        while(id_line := src_fa_fh.readline().rstrip()):
+        while (id_line := src_fa_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in infer_pos_id_set and infer_unique:
                 # remove duplicate Gencode
@@ -167,7 +277,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
                 continue
             infer_pos_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = src_fa_fh.readline().rstrip()
             infer_pos_dict[chr].append((_id, seq_line, id_line[1:]))
             infer_label_fh.write(_id + '\t' + infer_id_label_dict[_id] + '\n')
@@ -180,7 +290,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     test_pos_id_set = set()
     print('loading... train/test positive data')
     with open(alu_file, 'r') as alu_fh:
-        while(id_line := alu_fh.readline().rstrip()):
+        while (id_line := alu_fh.readline().rstrip()):
             # >h38_mk_AluJ_38::chr2:96241692-96242002(-)
             _id = id_line.split('::')[-1]
             chr = id_line.split(':')[2]
@@ -188,7 +298,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
                 # skip
                 alu_fh.readline()
                 continue
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             if chr in test_chrs:
                 if _id in test_pos_id_set and test_unique:
                     # duplicate, skip
@@ -213,7 +323,7 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     val_pos_all_n = 0
     # duplicate the train set
 
-    val_pos_dict = defaultdict(list) 
+    val_pos_dict = defaultdict(list)
     for chr, lst in train_pos_dict.items():
         random.seed(42)
         random.shuffle(lst)
@@ -229,17 +339,17 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     neg_dict = defaultdict(list)
     neg_id_set = set()
     with open(neg_file, 'r') as neg_fh:
-        while(id_line := neg_fh.readline().rstrip()):
+        while (id_line := neg_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in neg_id_set:
                 neg_fh.readline()
                 continue
             neg_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = neg_fh.readline().rstrip()
             neg_dict[chr].append((_id, seq_line, id_line[1:]))
-    
+
     # get distinct neg data for infer set, and train/test set
     print('spliting... negtive data for train/test/infer set')
     infer_neg_dict = defaultdict(list)
@@ -257,38 +367,45 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
         for id_seq in id_seq_lst:
             if id_seq[0] not in neg_id_set:
                 neg_id_set.add(id_seq[0])
-                if len(infer_neg_dict[chr]) <= infer_neg_chr_n:
+                if len(infer_neg_dict[chr]) < infer_neg_chr_n:
                     # infer_neg not enough, continue add
+                    # TODO: if those neg_chr_n conditions are <=, which will result in that each chr has (#pos + 1) neg
                     infer_neg_dict[chr].append(id_seq)
                     infer_label_fh.write(id_seq[0] + '\t' + '0' + '\n')
                 else:
                     # for test, train, and val
                     if chr in test_chrs:
                         # test
-                        if len(test_neg_dict[chr]) <= test_neg_chr_n:
+                        if len(test_neg_dict[chr]) < test_neg_chr_n:
                             test_neg_dict[chr].append(id_seq)
                     else:
                         # train, val
-                        if len(train_neg_dict[chr]) <= train_neg_chr_n:
+                        if len(train_neg_dict[chr]) < train_neg_chr_n:
                             # train
                             train_neg_dict[chr].append(id_seq)
-                        elif len(val_neg_dict[chr]) <= val_neg_chr_n:
+                        elif len(val_neg_dict[chr]) < val_neg_chr_n:
                             # val
                             val_neg_dict[chr].append(id_seq)
-        print(f'{chr} train\tpos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
-        print(f'{chr} val\tpos: {len(val_pos_dict[chr])}\t neg: {len(val_neg_dict[chr])}')
-        print(f'{chr} test\tpos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
-        print(f'{chr} infer\tpos: {len(infer_pos_dict[chr])}\t neg: {len(infer_neg_dict[chr])}')
+        print(
+            f'{chr} train\tpos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
+        print(
+            f'{chr} val\tpos: {len(val_pos_dict[chr])}\t neg: {len(val_neg_dict[chr])}')
+        print(
+            f'{chr} test\tpos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
+        print(
+            f'{chr} infer\tpos: {len(infer_pos_dict[chr])}\t neg: {len(infer_neg_dict[chr])}')
         print('')
-    
+
     # write several for-loop due to keys may have small difference
     get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead
     print('converting... to labeled data')
     datasets = defaultdict(list)
     for chr in train_pos_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_pos_dict[chr], 1.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_pos_dict[chr], 1.)
     for chr in train_neg_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_neg_dict[chr], 0.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_neg_dict[chr], 0.)
     for chr in val_pos_dict.keys():
         datasets['val'] += get_dataset_from_seq_ead_fn(val_pos_dict[chr], 1.)
     for chr in val_neg_dict.keys():
@@ -298,9 +415,11 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     for chr in test_neg_dict.keys():
         datasets['test'] += get_dataset_from_seq_ead_fn(test_neg_dict[chr], 0.)
     for chr in infer_pos_dict.keys():
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_pos_dict[chr], 1.)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_pos_dict[chr], 1.)
     for chr in infer_neg_dict.keys():
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_neg_dict[chr], 0.)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_neg_dict[chr], 0.)
     print('load_data_ead_alu_chr time usage: {}'.format(time.time() - st))
     # for i in train_pos_id_set:
     #     print('train', i)
@@ -310,9 +429,10 @@ def load_data_ead_alu_chr_withinfer2(strand, alu_file, neg_file, work_dir, infer
     #     print('infer', i)
     return datasets
 
+
 def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_set,
-                          pos_ratio=0.5, test_chrs=['chr2', 'chr5'],
-                          train_unique=False, test_unique=True, infer_unique=True):
+                                    pos_ratio=0.5, test_chrs=['chr2', 'chr5'],
+                                    train_unique=False, test_unique=True, infer_unique=True):
     # read train first
     # if seq in infer set appears in train, then skip
     # if distinct is True, then test set only has distinct data
@@ -326,11 +446,11 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
     test_pos_id_set = set()
     print('loading... train/test positive data')
     with open(alu_file, 'r') as alu_fh:
-        while(id_line := alu_fh.readline().rstrip()):
+        while (id_line := alu_fh.readline().rstrip()):
             # >h38_mk_AluJ_38::chr2:96241692-96242002(-)
             _id = id_line.split('::')[-1]
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             if chr in test_chrs:
                 if _id in test_pos_id_set and test_unique:
                     # duplicate, skip
@@ -356,7 +476,7 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
     class_2_counter = 0  # 3 in->2
     infer_bed_fh = open(work_dir + f'/{infer_set}' + '_pos_alu.bed', 'r')
     src_bed_reader = csv.reader(infer_bed_fh, delimiter='\t')
-    infer_id_label_dict= {}
+    infer_id_label_dict = {}
     for idx, row in enumerate(src_bed_reader):
         l = int(row[1])
         r = int(row[2])
@@ -388,7 +508,7 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
     infer_pos_id_set = set()
     # TODO: add test_pos_id_set too
     with open(work_dir + f'/{infer_set}' + '_pos_alu.fa', 'r') as src_fa_fh:
-        while(id_line := src_fa_fh.readline().rstrip()):
+        while (id_line := src_fa_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in train_pos_id_set:
                 # this _id has appeared in training set
@@ -402,7 +522,7 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
                 continue
             infer_pos_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = src_fa_fh.readline().rstrip()
             infer_pos_dict[chr].append((_id, seq_line, id_line[1:]))
             infer_label_fh.write(_id + '\t' + infer_id_label_dict[_id] + '\n')
@@ -412,17 +532,17 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
     neg_dict = defaultdict(list)
     neg_id_set = set()
     with open(neg_file, 'r') as neg_fh:
-        while(id_line := neg_fh.readline().rstrip()):
+        while (id_line := neg_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in neg_id_set:
                 neg_fh.readline()
                 continue
             neg_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = neg_fh.readline().rstrip()
             neg_dict[chr].append((_id, seq_line, id_line[1:]))
-    
+
     # get distinct neg data for infer set, and train/test set
     print('spliting... negtive data for train/test/infer set')
     infer_neg_id_set = set()
@@ -431,9 +551,12 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
     test_neg_id_set = set()
     test_neg_dict = defaultdict(list)
     for chr, id_seq_lst in neg_dict.items():
-        train_neg_chr_n = len(train_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
-        test_neg_chr_n = len(test_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
-        infer_neg_chr_n = len(infer_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        train_neg_chr_n = len(
+            train_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        test_neg_chr_n = len(
+            test_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        infer_neg_chr_n = len(
+            infer_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
         random.shuffle(id_seq_lst)
         for id_seq in id_seq_lst:
             if id_seq[0] not in infer_neg_id_set:
@@ -453,32 +576,40 @@ def load_data_ead_alu_chr_withinfer(strand, alu_file, neg_file, work_dir, infer_
                         # for train
                         if len(train_neg_dict[chr]) < train_neg_chr_n:
                             train_neg_dict[chr].append(id_seq)
-        print(f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
-        print(f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
-        print(f'{chr} infer pos: {len(infer_pos_dict[chr])}\t neg: {len(infer_neg_dict[chr])}')
-    
+        print(
+            f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
+        print(
+            f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
+        print(
+            f'{chr} infer pos: {len(infer_pos_dict[chr])}\t neg: {len(infer_neg_dict[chr])}')
+
     # write several for-loop due to keys may have small difference
     get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead
     print('converting... to labeled data')
     datasets = defaultdict(list)
     for chr in train_pos_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_pos_dict[chr], 1.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_pos_dict[chr], 1.)
     for chr in train_neg_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_neg_dict[chr], 0.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_neg_dict[chr], 0.)
     for chr in test_pos_dict.keys():
         datasets['test'] += get_dataset_from_seq_ead_fn(test_pos_dict[chr], 1.)
     for chr in test_neg_dict.keys():
         datasets['test'] += get_dataset_from_seq_ead_fn(test_neg_dict[chr], 0.)
     for chr in infer_pos_dict.keys():
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_pos_dict[chr], 1.)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_pos_dict[chr], 1.)
     for chr in infer_neg_dict.keys():
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_neg_dict[chr], 0.)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_neg_dict[chr], 0.)
     print('load_data_ead_alu_chr time usage: {}'.format(time.time() - st))
     return datasets
 
+
 def load_data_ead_alu_chr_train_unique_duplicate(alu_file, neg_file,
-                          neg_ratio=1.0, val_ratio=0.1, test_chrs=['chr2', 'chr5'],
-                          test_unique=True, duplicate_times=5):
+                                                 neg_ratio=1.0, val_ratio=0.1, test_chrs=['chr2', 'chr5'],
+                                                 test_unique=True, duplicate_times=5):
     # read train set and only keep the unique alus
     # then duplicate the unique alus multiple times
     st = time.time()
@@ -490,10 +621,10 @@ def load_data_ead_alu_chr_train_unique_duplicate(alu_file, neg_file,
     test_pos_id_set = set()
     print('loading... train/test positive data')
     with open(alu_file, 'r') as alu_fh:
-        while(id_line := alu_fh.readline().rstrip()):
+        while (id_line := alu_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             if chr in test_chrs:
                 if _id in test_pos_id_set and test_unique:
                     # duplicate, skip
@@ -530,17 +661,17 @@ def load_data_ead_alu_chr_train_unique_duplicate(alu_file, neg_file,
     neg_dict = defaultdict(list)
     neg_id_set = set()
     with open(neg_file, 'r') as neg_fh:
-        while(id_line := neg_fh.readline().rstrip()):
+        while (id_line := neg_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in neg_id_set:
                 neg_fh.readline()
                 continue
             neg_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = neg_fh.readline().rstrip()
             neg_dict[chr].append((_id, seq_line, id_line[1:]))
-    
+
     # get distinct neg data for infer set, and train/test set
     print('spliting... negtive data for train/test set')
     train_neg_dict = defaultdict(list)
@@ -569,19 +700,24 @@ def load_data_ead_alu_chr_train_unique_duplicate(alu_file, neg_file,
                     elif len(val_neg_dict[chr]) <= val_neg_chr_n:
                         # val
                         val_neg_dict[chr].append(id_seq)
-        print(f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
-        print(f'{chr} val\tpos: {len(val_pos_dict[chr])}\t neg: {len(val_neg_dict[chr])}')
-        print(f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
+        print(
+            f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
+        print(
+            f'{chr} val\tpos: {len(val_pos_dict[chr])}\t neg: {len(val_neg_dict[chr])}')
+        print(
+            f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
         print('')
-    
+
     # write several for-loop due to keys may have small difference
     get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead
     print('converting... to labeled data')
     datasets = defaultdict(list)
     for chr in train_pos_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_pos_dict[chr], 1.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_pos_dict[chr], 1.)
     for chr in train_neg_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_neg_dict[chr], 0.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_neg_dict[chr], 0.)
     for chr in val_pos_dict.keys():
         datasets['val'] += get_dataset_from_seq_ead_fn(val_pos_dict[chr], 1.)
     for chr in val_neg_dict.keys():
@@ -593,9 +729,10 @@ def load_data_ead_alu_chr_train_unique_duplicate(alu_file, neg_file,
     print('load_data_ead_alu_chr time usage: {}'.format(time.time() - st))
     return datasets
 
+
 def load_data_ead_alu_chr_woinfer(alu_file, neg_file,
-                          pos_ratio=0.5, test_chrs=['chr2', 'chr5'],
-                          train_unique=False, test_unique=True):
+                                  pos_ratio=0.5, test_chrs=['chr2', 'chr5'],
+                                  train_unique=False, test_unique=True):
     # load train/test alu and infer alu
     # split each set using chr#
     # if distinct is True, then test set only has distinct data
@@ -609,10 +746,10 @@ def load_data_ead_alu_chr_woinfer(alu_file, neg_file,
     test_pos_id_set = set()
     print('loading... train/test positive data')
     with open(alu_file, 'r') as alu_fh:
-        while(id_line := alu_fh.readline().rstrip()):
+        while (id_line := alu_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             if chr in test_chrs:
                 if _id in test_pos_id_set and test_unique:
                     # duplicate, skip
@@ -632,31 +769,33 @@ def load_data_ead_alu_chr_woinfer(alu_file, neg_file,
                 train_pos_all_n += 1
     print('train len:', train_pos_all_n)
     print('test len:', test_pos_all_n)
-    
+
     # read neg alu file
     print('loading... negative data')
     neg_dict = defaultdict(list)
     neg_id_set = set()
     with open(neg_file, 'r') as neg_fh:
-        while(id_line := neg_fh.readline().rstrip()):
+        while (id_line := neg_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in neg_id_set:
                 neg_fh.readline()
                 continue
             neg_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = neg_fh.readline().rstrip()
             neg_dict[chr].append((_id, seq_line, id_line[1:]))
-    
+
     # get distinct neg data for infer set, and train/test set
     print('spliting... negtive data for train/test set')
     train_neg_dict = defaultdict(list)
     test_neg_id_set = set()
     test_neg_dict = defaultdict(list)
     for chr, id_seq_lst in neg_dict.items():
-        train_neg_chr_n = len(train_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
-        test_neg_chr_n = len(test_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        train_neg_chr_n = len(
+            train_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        test_neg_chr_n = len(
+            test_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
         random.shuffle(id_seq_lst)
         for id_seq in id_seq_lst:
             if chr in test_chrs:
@@ -669,17 +808,21 @@ def load_data_ead_alu_chr_woinfer(alu_file, neg_file,
                 # for train
                 if len(train_neg_dict[chr]) < train_neg_chr_n:
                     train_neg_dict[chr].append(id_seq)
-        print(f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
-        print(f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
-    
+        print(
+            f'{chr} train pos: {len(train_pos_dict[chr])}\t neg: {len(train_neg_dict[chr])}')
+        print(
+            f'{chr} test pos: {len(test_pos_dict[chr])}\t neg: {len(test_neg_dict[chr])}')
+
     # write several for-loop due to keys may have small difference
     get_dataset_from_seq_ead_fn = get_dataset_from_seq_ead
     print('converting... to labeled data')
     datasets = defaultdict(list)
     for chr in train_pos_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_pos_dict[chr], 1.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_pos_dict[chr], 1.)
     for chr in train_neg_dict.keys():
-        datasets['train'] += get_dataset_from_seq_ead_fn(train_neg_dict[chr], 0.)
+        datasets['train'] += get_dataset_from_seq_ead_fn(
+            train_neg_dict[chr], 0.)
     for chr in test_pos_dict.keys():
         datasets['test'] += get_dataset_from_seq_ead_fn(test_pos_dict[chr], 1.)
     for chr in test_neg_dict.keys():
@@ -701,10 +844,10 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
     class_2_counter = 0  # 3 in->2
     # gencode_bed_file = data_dir + '/Gencode/GENCODE.v36.ALUs.all.overlap.filtered.bed'
     # gencode_bed_file = data_dir + '/Gencode/gencode_alu.bed'
-    
+
     infer_bed_fh = open(work_dir + f'/{infer_set}' + '_pos_alu.bed', 'r')
     src_bed_reader = csv.reader(infer_bed_fh, delimiter='\t')
-    infer_id_label_dict= {}
+    infer_id_label_dict = {}
     for idx, row in enumerate(src_bed_reader):
         l = int(row[1])
         r = int(row[2])
@@ -735,14 +878,14 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
     infer_pos_dict = defaultdict(list)
     infer_pos_id_set = set()
     with open(work_dir + f'/{infer_set}' + '_pos_alu.fa', 'r') as src_fa_fh:
-        while(id_line := src_fa_fh.readline().rstrip()):
+        while (id_line := src_fa_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in infer_pos_id_set and infer_unique:
                 src_fa_fh.readline()
                 continue
             infer_pos_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = src_fa_fh.readline().rstrip()
             infer_pos_dict[chr].append((_id, seq_line, id_line[1:]))
             infer_label_fh.write(_id + '\t' + infer_id_label_dict[_id] + '\n')
@@ -756,24 +899,25 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
                 continue
             else:
                 print(len(infer_pos_dict[chr]), chr)
-            datasets['infer'] += get_dataset_from_seq_ead_fn(infer_pos_dict[chr], 1)
+            datasets['infer'] += get_dataset_from_seq_ead_fn(
+                infer_pos_dict[chr], 1)
         return datasets
     # read neg alu file
     print('loading... negative data')
     neg_dict = defaultdict(list)
     neg_id_set = set()
     with open(infer_neg_file, 'r') as neg_fh:
-        while(id_line := neg_fh.readline().rstrip()):
+        while (id_line := neg_fh.readline().rstrip()):
             _id = id_line.split('::')[-1]
             if _id in neg_id_set:
                 neg_fh.readline()
                 continue
             neg_id_set.add(_id)
             chr = id_line.split(':')[2]
-            assert(chr[0:3] == 'chr')
+            assert (chr[0:3] == 'chr')
             seq_line = neg_fh.readline().rstrip()
             neg_dict[chr].append((_id, seq_line, id_line[1:]))
-    
+
     # get distinct neg data for infer set, and train/test set
     print('spliting... negtive data for infer set')
     infer_neg_id_set = set()
@@ -781,7 +925,8 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
     for chr, id_seq_lst in neg_dict.items():
         if chr not in infer_pos_dict.keys():
             continue
-        infer_neg_chr_n = len(infer_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
+        infer_neg_chr_n = len(
+            infer_pos_dict[chr]) * int((1 - pos_ratio) / pos_ratio)
         random.shuffle(id_seq_lst)
         for id_seq in id_seq_lst:
             if id_seq[0] not in infer_neg_id_set:
@@ -791,7 +936,7 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
                     infer_neg_dict[chr].append(id_seq)
                     infer_label_fh.write(id_seq[0] + '\t' + '0' + '\n')
         # print(f'{chr} infer pos: {len(infer_pos_dict[chr])}\t neg: {len(infer_neg_dict[chr])}')
-    
+
     # write several for-loop due to keys may have small difference
     print('converting... to labeled data')
     datasets = defaultdict(list)
@@ -801,16 +946,19 @@ def load_data_ead_alu_chr_inferonly(strand, infer_neg_file, work_dir=None, infer
             continue
         else:
             print(len(infer_pos_dict[chr]), chr)
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_pos_dict[chr], 1)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_pos_dict[chr], 1)
     for chr in infer_neg_dict.keys():
         if len(infer_neg_dict[chr]) == 0:
             print('0 neg', chr)
             continue
         else:
             print(len(infer_pos_dict[chr]), chr)
-        datasets['infer'] += get_dataset_from_seq_ead_fn(infer_neg_dict[chr], 0)
+        datasets['infer'] += get_dataset_from_seq_ead_fn(
+            infer_neg_dict[chr], 0)
     print('load_data_ead_alu_chr_inferonly time usage: {}'.format(time.time() - st))
     return datasets
+
 
 def load_data_two_tissue(first_alu_file, second_alu_file, first_exon_file=None, second_exon_file=None, ratio=0.1):
     datasets = {}
@@ -820,7 +968,7 @@ def load_data_two_tissue(first_alu_file, second_alu_file, first_exon_file=None, 
         #  open(first_exon_file, 'r') as exon_fh:
         # exon_line = exon_fh.readline()
         alu_line = alu_fh.readline()
-        while(alu_line):
+        while (alu_line):
             # exon_line = exon_fh.readline().rstrip()
             # exon_fh.readline()
             alu_line = alu_fh.readline().rstrip()
@@ -830,7 +978,7 @@ def load_data_two_tissue(first_alu_file, second_alu_file, first_exon_file=None, 
         #  open(second_exon_file, 'r') as exon_fh:
         # exon_line = exon_fh.readline()
         alu_line = alu_fh.readline()
-        while(alu_line):
+        while (alu_line):
             # exon_line = exon_fh.readline().rstrip()
             # exon_fh.readline()
             alu_line = alu_fh.readline().rstrip()
@@ -840,8 +988,8 @@ def load_data_two_tissue(first_alu_file, second_alu_file, first_exon_file=None, 
     print('{} {}'.format(first_alu_file, len(first_data)))
     print('{} {}'.format(second_alu_file, len(second_data)))
     pos_dataset = get_dataset_from_seq_ead(first_data, 1.)
-    neg_dataset = get_dataset_from_seq_ead(second_data, 0.) 
-    
+    neg_dataset = get_dataset_from_seq_ead(second_data, 0.)
+
     datasets['train'] = pos_dataset + neg_dataset
     datasets['test'] = []
     return datasets

@@ -28,17 +28,17 @@ def compute_metirx(prd_y, prd_y_bin, y, log_fh=None):
         log_fh.write('infer\tPrecision: {:.4f}\tRecall: {:.4f}\tF1: {:.4f}\tAUC: {:.4f}\tAccuracy: {:4f}'.format(precision, recall, f1, roc_auc, acc) + '\n')
     return records 
 
-def draw(name, epoch, dataset, work_dir=None, log_fh=None):
+def draw(name, epoch, dataset=None, work_dir=None, log_fh=None, label_file='labels.txt', prd_file='prd_y.txt'):
     id_lst = []
     label_lst = []
     prd_y_lst = []
-    with open(work_dir + '/labels.txt', 'r') as label_fh,\
-         open(work_dir + '/prd_y.txt', 'r') as prd_y_fh:
+    with open(os.path.join(work_dir, label_file), 'r') as label_fh,\
+         open(os.path.join(work_dir, prd_file), 'r') as prd_y_fh:
         for line in label_fh.readlines():
             line_lst = line.rstrip().split('\t')
             if len(line_lst) == 0:
                 break
-            label_lst.append(int(line_lst[1]))
+            label_lst.append(int(float(line_lst[1])))
         for line in prd_y_fh.readlines():
             line_lst = line.rstrip().split('\t')
             if len(line_lst) == 0:
@@ -46,36 +46,38 @@ def draw(name, epoch, dataset, work_dir=None, log_fh=None):
             prd_y_lst.append(float(line_lst[0]))    
             id_lst.append(line_lst[2])
     save_df = pd.DataFrame({'ID': id_lst, 'Class': label_lst, 'Score': prd_y_lst})
+    print(save_df)
     save_df.to_csv(open(work_dir + '/prd_records.txt', 'w'), sep='\t', index=None)
 
     df = pd.DataFrame({'Class': label_lst, 'Score': prd_y_lst})
-    df.loc[df['Class'] == 0, 'Class_bin'] = 0
-    if dataset == 'MOAT':
-        df.loc[df['Class'] == 1, 'Class_bin'] = 1
-    elif dataset == 'OtherSpecies' or dataset == 'Gencode':
-        df.loc[df['Class'] == 2, 'Class_bin'] = 1 
-    df.loc[df['Score'] >= 0.5, 'Prd_bin'] = 1
-    df.loc[df['Score'] < 0.5, 'Prd_bin'] = 0
-    df = df[df['Class_bin'].notna()]
-    records = compute_metirx(df['Score'], df['Prd_bin'], df['Class_bin'], log_fh=log_fh)
-    # print(df)
-    # tips = sns.load_dataset("tips")
-    # g = sns.PairGrid(data=df)
-    # g.map_diag(sns.histplot(x='Score', hue='Class', data=df, palette='Set1', bins=20, common_norm=False))
-    # g.map_diag(sns.boxplot(x='Class', y='Score', data=df, palette='Set1'))
-    # g.map_diag(sns.kdeplot(x='Score', hue='Class',data=df, palette='Set1', common_norm=False))
+    # df.loc[df['Class'] == 0, 'Class_bin'] = 0
+    # if dataset == 'MOAT':
+        # df.loc[df['Class'] == 1, 'Class_bin'] = 1
+    # elif dataset == 'OtherSpecies' or dataset == 'Gencode':
+        # df.loc[df['Class'] == 2, 'Class_bin'] = 1 
+    # df.loc[df['Score'] >= 0.5, 'Prd_bin'] = 1
+    # df.loc[df['Score'] < 0.5, 'Prd_bin'] = 0
+    # df = df[df['Class_bin'].notna()]
+    # records = compute_metirx(df['Score'], df['Prd_bin'], df['Class_bin'], log_fh=log_fh)
+    print(df)
+    imgs_dir = os.path.join(work_dir, 'imgs')
+    os.makedirs(imgs_dir, exist_ok=True)
     ax = sns.histplot(x='Score', hue='Class', data=df, palette='Set1', bins=20, common_norm=False, stat='probability', multiple='dodge')
-    plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/hist_{name}_e{epoch}.png')
+    # plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/hist_{name}_e{epoch}.png')
+    plt.savefig(os.path.join(imgs_dir, f'hist_{name}_e{epoch}.png'))
     plt.close()
 
     ax = sns.boxplot(x='Class', y='Score', data=df, palette='Set1')
-    plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/box_{name}_e{epoch}.png')
+    # plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/box_{name}_e{epoch}.png')
+    plt.savefig(os.path.join(imgs_dir, f'box_{name}_e{epoch}.png'))
     plt.close()
     # ax = sns.kdeplot(x="Score", hue="Class",data=df, cumulative=True, palette=['r','g','b'])
     ax = sns.kdeplot(x='Score', hue='Class',data=df, palette='Set1', common_norm=False)
-    plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/kde_{name}_e{epoch}.png')
+    # plt.savefig(os.getcwd() + f'/data/{dataset}/imgs/kde_{name}_e{epoch}.png')
+    plt.savefig(os.path.join(imgs_dir, f'kde_{name}_e{epoch}.png'))
     plt.close()
-    return records
+    return
+    # return records
 
 # def draw_gencode(name, epoch):
 #     id_lst = []
