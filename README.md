@@ -16,7 +16,7 @@ To help answer these questions, we developed a Deep Learning (DL) model eXAlu to
 
 The model network has four convolutional layers and corresponding batch-norm layers, pooling layers. And the fully-connected layers map the features extracted by convolutional layers to the output probabilities.
 
-![model_network](images/model_network.png)
+<!-- ![model_network](images/model_network.png) -->
 
 This repository provides inference and mutagenesis plotting functions. The mutagenesis graphs show the difference by mutating single nucleotides at each position on given *Alu* sequences.
 
