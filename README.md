@@ -9,7 +9,7 @@ This software is beta version. Manuscript in preparation.
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 ## What is eXAlu
-*Alu* repeats make up ~11% of the human genome, with more than one million copies. While most *Alu* elements map to nonfunctional intergenic and intronic sequences, some become incorporated into genes. *Alu* exonization, in which an intronic *Alu* sequence is recruited into a gene transcript (see below), can disrupt gene function and potentially lead to disease. *Alu* exons are estimated to represent 5% of alternatively spliced exons in the human genome, but the extent of *Alu* exonization in humans is not yet known.
+*Alu* repeats make up ~11% of the human genome, with more than one million copies. While most *Alu* elements map to nonfunctional intergenic and intronic sequences, some become incorporated into genes. *Alu* exonization, in which an intronic *Alu* sequence is recruited into a gene transcript (see below), can disrupt or create gene function, potentially leading to disease. 
 
 ![transcript_alu](images/transcript_alu.png)
 
