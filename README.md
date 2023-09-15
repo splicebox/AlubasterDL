@@ -48,7 +48,7 @@ pip install -e .
 ### Inference
 The program can take as input a bed file, containing genomic *Alu* intervals, or a fasta file, containing the *Alu* plus context sequences, and the user needs to specify the input mode,
 ```
-python infer.py {bed,fasta} ...
+python run_alubasterDL.py {bed,fasta} ...
 
 positional arguments:
   {bed,fasta}  select bed or fasta input mode
@@ -58,7 +58,7 @@ positional arguments:
 
 To input a bed file,
 ```
-python infer.py bed -b ALU_BED_FILE -r REF_GENOME_FILE -m MODEL_WEIGHTS_FILE -o OUTPUT_DIR
+python run_alubasterDL.py bed -b ALU_BED_FILE -r REF_GENOME_FILE -m MODEL_WEIGHTS_FILE -o OUTPUT_DIR
 
 optional arguments:
   -b ALU_BED_FILE       the input *Alu* bed file
@@ -69,7 +69,7 @@ optional arguments:
 
 To input a fasta file,
 ```
-python infer.py fasta -f ALU_FASTA_FILE -m MODEL_WEIGHTS_FILE -o OUTPUT_DIR
+python run_alubasterDL.py fasta -f ALU_FASTA_FILE -m MODEL_WEIGHTS_FILE -o OUTPUT_DIR
 
 optional arguments:
   -f ALU_FASTA_FILE     the input *Alu* fasta file
@@ -83,8 +83,8 @@ Below is an example showing how to perform inference on a small *Alu* bed file u
 ```
 conda activate alu_env
 cd test/inference
-python infer.py bed -b example_alu.bed -r ~/data_lflorea1/shared/genomes/hg38/hg38c.fa -m ../models/model_weights.pt -o ./demo_out
-python infer.py fasta -f example_alu.fa -m ../models/model_weights.pt -o ./demo_out
+python run_alubasterDL.py bed -b example_alu.bed -r ~/data_lflorea1/shared/genomes/hg38/hg38c.fa -m ../models/model_weights.pt -o ./demo_out
+python run_alubasterDL.py fasta -f example_alu.fa -m ../models/model_weights.pt -o ./demo_out
 ```
 
 ### Mutagenesis
